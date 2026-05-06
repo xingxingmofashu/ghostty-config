@@ -1,58 +1,55 @@
 # AGENTS.md
 
-## Repo purpose
+## Source of truth
 
-`gtc` is a Bun CLI for Ghostty config management. Real command set is `list`, `set`, `remove`, and `theme` subcommands (`theme list|install|remove`).
+- `README.md` is stale about the CLI shape and `bun run typecheck`; trust `src/index.ts`, `package.json`, and command files instead.
 
-## Commands that matter
+## Commands
 
-```bash
-bun install
-bun run dev
-bun run lint
-bun run typecheck
-bun run fmt
-bun run fmt:fix
-bun run build
-bun run build -- --single
-bun run build -- --single --baseline
-```
+- `bun run dev` runs the CLI from source via `src/index.ts`.
+- `bun run lint` uses `oxlint`.
+- `bun run typecheck` is `oxlint --type-aware`, not `tsc`.
+- `bun run fmt` checks formatting with `oxfmt --check`; `bun run fmt:fix` writes fixes.
+- `bun run lint:fix` runs `oxlint --fix`.
+- `bun run build` cross-compiles all release targets.
+- `bun run build -- --single` builds only the host target.
+- `bun run build -- --single --baseline` includes the host baseline build when applicable.
+- Pre-commit runs `bun run lint && bun run typecheck && bun run fmt` in that order.
+- There is no test suite.
 
-- Pre-commit hook runs: `bun run lint && bun run typecheck && bun run fmt` (same order).
-- `typecheck` is **not** `tsc`; it runs `oxlint --type-aware`.
-- There is no test suite (`bun test` has nothing to run).
+## CLI shape
+
+- Real top-level commands are `gtc config`, `gtc theme`, and `gtc font`; all require a subcommand.
+- `config` subcommands: `list` (`show`, `ls`), `remove <name>` (`rm`), `validate` (`check`).
+- `theme` subcommands: `list`, `install`, `remove` (`rm`), `set`.
+- `font` subcommands: `list`, `set`.
+- `config list` uses `--query` / `-q`, not `--search`.
 
 ## Verification shortcuts
 
-```bash
-bun run src/index.ts list
-bun run src/index.ts list --search font
-bun run src/index.ts set
-bun run src/index.ts remove font-size
-bun run src/index.ts theme list
-```
+- `bun run src/index.ts config list`
+- `bun run src/index.ts config list --query font`
+- `bun run src/index.ts config validate`
+- `bun run src/index.ts theme list`
+- `bun run src/index.ts font list`
+
+## Code map
+
+- `src/index.ts` wires the yargs entrypoint and registers the `config`, `theme`, and `font` command groups.
+- `src/config/index.ts` owns config file I/O, hardcoded Ghostty paths, cache paths, and theme API env overrides.
+- `src/theme/index.ts` fetches remote themes, caches them at `~/.config/gtc/cache/themes.json`, and installs/removes local theme files.
+- `src/font/index.ts` shells out to `ghostty +list-fonts`; there is no font cache in use even though `GTC_FONT_CACHE_PATH` exists.
+- `src/config/constants.ts` is the static allowlist of valid Ghostty config keys; new keys must be added there manually.
+- `scripts/build.ts` is the Bun compile pipeline.
+- `bin/gtc` is an intentional CJS shim.
 
 ## High-signal gotchas
 
-- `scripts/build.ts` always does `rm -rf dist` before building.
-- `--single` builds only the current OS/arch and skips musl/baseline variants by default; add `--baseline` if you explicitly need baseline on host.
-- Published build targets are Linux + macOS only (no Windows target in `allTargets`).
-- `gtc set` is interactive-only via `@clack/prompts`; no positional key/value mode.
-- Valid config keys are a static allowlist in `src/config/constants.ts`; new Ghostty keys must be added there.
-- Config path is hardcoded to `~/.config/ghostty/config` in `src/config/index.ts`.
-- Theme directory is hardcoded to `~/.config/ghostty/themes`; theme commands depend on that path existing.
-
-## Architecture map
-
-- `src/index.ts`: yargs entrypoint, command wiring, global error handling.
-- `src/config/index.ts`: core file I/O + env-controlled theme API/cache paths.
-- `src/theme/index.ts`: remote theme fetch/cache (`~/.config/gtc/cache/themes.json`) + local theme install/remove.
-- `src/cli/commands/*.ts`: command handlers; `src/cli/commands/theme/index.ts` requires a subcommand (`.demandCommand()`).
-- `scripts/build.ts`: Bun cross-compile pipeline using `Bun.build({ compile: true })`.
-- `bin/gtc`: intentionally CJS shim (`require`) that resolves platform binary packages.
-
-## Env vars used by runtime
-
-- `GTC_BIN_PATH`: force `bin/gtc` to execute a specific binary.
-- `GTC_THEME_BASE_URL`: override theme site base URL.
-- `GTC_THEME_API_URL`: override theme API endpoint.
+- Config path is hardcoded to `~/.config/ghostty/config`.
+- Theme directory is hardcoded to `~/.config/ghostty/themes`.
+- Runtime env vars used by the app are `GTC_THEME_BASE_URL` and `GTC_THEME_API_URL`; `GTC_BIN_PATH` is used by `bin/gtc`.
+- `config remove` also deletes consecutive comment lines immediately above the removed key.
+- Theme and font commands depend on the local `ghostty` binary for `ghostty +validate-config`, `ghostty +show-config`, and `ghostty +list-fonts`.
+- `scripts/build.ts` always wipes `dist/` first.
+- `--single` skips musl and baseline variants by default.
+- Release builds target Linux and macOS only.
